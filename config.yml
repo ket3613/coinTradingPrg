@@ -1,4 +1,4 @@
 api:
-  access_key: CSi0ixhj9OltMHNpxCcxWxxv3f6NE5xkJlPXWWqc
-  secret_key: NdI0J43hj6GYvxpsmU189sHrEJHg9dqq6vJehZfU
-  server_url: https://api.upbit.com
+  access_key: ${{ secrets.UPID.api.access_key }}"
+  secret_key: ${{ secrets.UPID.api.secret_key }}"
+  server_url: ${{ secrets.UPID.api.server_url }}"
