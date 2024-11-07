@@ -15,7 +15,7 @@ def scheduled_task():
 
 # 스케줄러 설정
 scheduler = BackgroundScheduler()
-scheduler.add_job(scheduled_task, 'interval', seconds=5)
+scheduler.add_job(scheduled_task, 'interval', seconds=10)
 scheduler.start()
 
 
