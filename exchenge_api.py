@@ -116,7 +116,7 @@ class ExchangeApi:
 
         # 보유량 확인
         coin_balance = self.get_my_account2()
-        print("보유량 = " + str(coin_balance))
+        #print("보유량 = " + str(coin_balance))
 
         # 매도 조건 - 상단 밴드 터치 시 (보유량이 있는 경우에만 매도)
         if latest_data['trade_price'] >= latest_data['Upper'] and coin_balance > 0:
