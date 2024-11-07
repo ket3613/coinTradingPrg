@@ -30,7 +30,12 @@ class ExchangeApi:
 
         res = requests.get(f"{server_url}/v1/accounts", headers=headers)
         data = res.json()
-        return float(data[0]['balance'])
+
+        for coin in data:
+            if coin['currency'] == 'KRW':
+                return float(coin['balance'])
+
+        return 0.0  # 원화 잔고가 없으면 0 반환
 
     # 특정 코인 (KRW-SHIB) 잔고 조회 메서드
     def get_my_account2(self):
@@ -48,19 +53,29 @@ class ExchangeApi:
 
         # 예시로 KRW-SHIB 잔고를 가져옴
         for coin in data:
-            if coin['currency'] == 'SHIB':  # 원하는 코인(SHIB)을 조회
+            if coin['currency'] == 'KRW':  # 원하는 코인(SHIB)을 조회
                 return float(coin['balance'])  # 잔고 반환
 
         return 0.0  # 해당 코인이 없으면 0 반환
 
-    # 1분 봉 캔들 데이터 조회 메서드
+    # 현재 시가 가져오기 메서드
+    def get_open_price(self):
+        server_url = "https://api.upbit.com"
+        params = {
+             "markets": "KRW-SHIB"  # 원하는 마켓을 지정
+        }
+        res = requests.get(server_url + "/v1/ticker", params=params)
+        data = res.json()
+        return data
+
+    # 30분 봉 캔들 데이터 조회 메서드
     def get_data(self, count=30):
         params = {
             'market': market,
             'count': count,
         }
         headers = {"accept": "application/json"}
-        response = requests.get(f"{server_url}/v1/candles/minutes/1", params=params, headers=headers)
+        response = requests.get(f"{server_url}/v1/candles/minutes/30", params=params, headers=headers)
 
         data = response.json()
         return pd.DataFrame(data)
@@ -111,24 +126,36 @@ class ExchangeApi:
         data = data.dropna(subset=['MA20', 'STD', 'Upper', 'Lower'])
         return data
 
-    # 주문 실행 메서드
-    def place_order(self, market, side, price, volume):
+    # 주문 요청 메서드
+    def place_order(self, market, side, price, volume, ord_type="limit"):
+        params = {
+            'market': market,
+            'side': side,
+            'ord_type': ord_type,
+            'price': str(price),
+            'volume': str(volume),
+        }
+        query_string = unquote(urlencode(params, doseq=True)).encode("utf-8")
+
+        m = hashlib.sha512()
+        m.update(query_string)
+        query_hash = m.hexdigest()
+
         payload = {
             'access_key': access_key,
             'nonce': str(uuid.uuid4()),
-            'market': market,
-            'side': side,  # 'bid' for buy, 'ask' for sell
-            'price': str(price),
-            'volume': str(volume),
-            'ord_type': 'limit',  # 'limit' or 'market'
+            'query_hash': query_hash,
+            'query_hash_alg': 'SHA512',
         }
 
         jwt_token = jwt.encode(payload, secret_key)
-        authorization = f'Bearer {jwt_token}'
+        authorization = 'Bearer {}'.format(jwt_token)
         headers = {'Authorization': authorization}
 
-        res = requests.post(f"{server_url}/v1/orders", json=payload, headers=headers)
-        return res.json()  # 주문 결과 반환
+        response = requests.post(server_url + '/v1/orders', json=params, headers=headers)
+        return response.json()
+
+
 
     def cancel_order(self, order_uuid):
         # 주문 취소에 필요한 매개변수 설정
@@ -151,13 +178,11 @@ class ExchangeApi:
         }
 
         jwt_token = jwt.encode(payload, secret_key)
-        authorization = f'Bearer {jwt_token}'
-        headers = {
-            'Authorization': authorization,
-        }
+        authorization = 'Bearer {}'.format(jwt_token)
+        headers = {'Authorization': authorization}
 
         # 주문 취소 요청
-        res = requests.delete(f"{server_url}/v1/order", params=params, headers=headers)
+        res = requests.post(server_url + '/v1/orders', json=params, headers=headers)
 
         # 응답 JSON 반환
         return res.json()
@@ -176,6 +201,7 @@ class ExchangeApi:
 
         orderDate = self.get_open_orders(market,'wait')
 
+        #중복 생성시 삭제
         if not orderDate.empty:
             df = orderDate
             df['created_at'] = pd.to_datetime(df['created_at'])
@@ -199,21 +225,31 @@ class ExchangeApi:
                     cancel_response = self.cancel_order(order_uuid)
                     print(f"Ask 주문 취소 결과: {cancel_response}")
 
-        # 매도 조건 - 상단 밴드 터치 시 (보유량이 있는 경우에만 매도)
-        if latest_data['trade_price'] >= latest_data['Upper'] and coin_balance > 0:
+        data = self.get_open_price()
+        market_info = data[0]
+        trade_price = market_info['trade_price']
+
+        # print(f"현재 가격2 = {trade_price}")
+        # print(f"상단 밴드 = {latest_data['Upper']}")
+        # print(f"하단 밴드 = {latest_data['Lower']}")
+        # print(f"coin_balance = {coin_balance}")
+        #  매도 조건 - 상단 밴드 터치 시 (보유량이 있는 경우에만 매도)
+        if trade_price >= latest_data['Upper'] and coin_balance > 0:
             print("상단 밴드 터치 - 매도 신호 발생")
             print(f"보유량 = {coin_balance}")
-            print(f"현재 가격 = {latest_data['trade_price']}")
+            print(f"현재 가격 = {trade_price}")
             print(f"상단 밴드 = {latest_data['Upper']}")
             sell_volume = coin_balance  # 보유한 모든 코인 매도
-            self.place_order(market=market, side="ask", price=latest_data['trade_price'], volume=sell_volume)
+            print(self.place_order(market=market, side="ask", price=trade_price, volume=sell_volume))
 
         # 매수 조건 - 하단 밴드 터치 시
-        elif latest_data['trade_price'] <= latest_data['Lower']:
+        elif trade_price <= latest_data['Lower']:
             print("하단 밴드 터치 - 매수 신호 발생")
-            print(f"현재 가격 = {latest_data['trade_price']}")
+            print(f"현재 가격 = {trade_price}")
             print(f"하단 밴드 = {latest_data['Lower']}")
-            tradable_balance = self.get_my_account()
-            buy_volume = tradable_balance / latest_data['trade_price']
-            if buy_volume >= 1:
-                self.place_order(market=market, side="bid", price=latest_data['trade_price'], volume=buy_volume)
+
+            tradable_balance = self.get_my_account()  # 원화 잔액 조회
+            if tradable_balance >= 5100:  # 잔고가 5100원 이상일 때만 매수
+                buy_volume = tradable_balance / trade_price  # 매수 가능한 코인 수량 계산
+                if buy_volume >= 1:  # 최소 1개 이상 매수 가능하면
+                    print(self.place_order(market=market, side="bid", price=trade_price, volume=buy_volume))
