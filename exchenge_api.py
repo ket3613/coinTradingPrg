@@ -114,6 +114,25 @@ class ExchangeApi:
 
             print(f"최신 매수 주문 유지: 주문 ID: {latest_order['uuid']}, 가격: {latest_order['price']}")
 
+    # 매도 주문도 중복 제거
+    def remove_duplicate_sell_orders(self):
+        active_orders = self.get_active_orders()
+
+        # 매도 주문만 필터링
+        sell_orders = [order for order in active_orders if order['side'] == 'ask']
+
+        if sell_orders:
+            # 가장 최근 매도 주문을 찾기
+            latest_order = max(sell_orders, key=lambda order: order['created_at'])
+
+            # 가장 최근 매도 주문을 제외한 나머지 주문 취소
+            for order in sell_orders:
+                if order['uuid'] != latest_order['uuid']:
+                    print(f"취소 매도 주문 ID: {order['uuid']}, 가격: {order['price']}")
+                    self.cancel_order(order['uuid'])
+
+            print(f"최신 매도 주문 유지: 주문 ID: {latest_order['uuid']}, 가격: {latest_order['price']}")
+
     # 주문 취소 메서드
     def cancel_order(self, order_id):
         payload = {
@@ -133,6 +152,26 @@ class ExchangeApi:
         res = requests.delete(server_url + '/v1/order', params=params, headers=headers)
         return res.json()  # 주문 취소 결과 반환
 
+    # 주문 실행 메서드
+    def place_order(self, market, side, price, volume):
+        payload = {
+            'access_key': access_key,
+            'nonce': str(uuid.uuid4()),
+            'market': market,
+            'side': side,  # 'bid' for buy, 'ask' for sell
+            'price': str(price),
+            'volume': str(volume),
+            'ord_type': 'limit',  # 'limit' or 'market'
+        }
+
+        jwt_token = jwt.encode(payload, secret_key)
+        authorization = 'Bearer {}'.format(jwt_token)
+        headers = {
+            'Authorization': authorization,
+        }
+
+        res = requests.post(server_url + '/v1/orders', json=payload, headers=headers)
+        return res.json()  # 주문 결과 반환
 
     # 볼린저 밴드 전략 메서드
     def bollinger_strategy(self):
@@ -145,7 +184,6 @@ class ExchangeApi:
 
         # 보유량 확인
         coin_balance = self.get_my_account2()
-        #print("보유량 = " + str(coin_balance))
 
         # 매도 조건 - 상단 밴드 터치 시 (보유량이 있는 경우에만 매도)
         if latest_data['trade_price'] >= latest_data['Upper'] and coin_balance > 0:
@@ -155,16 +193,17 @@ class ExchangeApi:
             print(latest_data['Upper'])
             sell_volume = coin_balance  # 보유한 모든 코인 매도
             self.place_order(market=market, side="ask", price=latest_data['trade_price'], volume=sell_volume)
-            self.remove_duplicate_buy_orders()
+            self.remove_duplicate_sell_orders()  # 매도 주문 중복 제거
 
         # 매수 조건 - 하단 밴드 터치 시
         elif latest_data['trade_price'] <= latest_data['Lower']:
             print("하단 밴드 터치 - 매수 신호 발생")
             print(latest_data['trade_price'])
             print(latest_data['Lower'])
-            tradable_balance = self.get_my_account() * 0.7
+            tradable_balance = self.get_my_account() * 0.7  # 70%만 사용
             buy_volume = tradable_balance / latest_data['trade_price']
             if buy_volume >= 1:
                 self.place_order(market=market, side="bid", price=latest_data['trade_price'], volume=buy_volume)
+                self.remove_duplicate_buy_orders()  # 매수 주문 중복 제거
             else:
                 print("매수할 수 있는 최소 수량 미달로 매수하지 않음.")
