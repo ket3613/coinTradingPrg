@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 import time
 import pandas as pd
+from datetime import datetime
 from exchenge_api import ExchangeApi
 
 app = FastAPI()
@@ -12,17 +13,14 @@ def scheduled_task():
     exchange_api = ExchangeApi()
     exchange_api.bollinger_strategy()  # 매수/매도 신호 체크 및 실행
 
+def check_scheduler_status():
+    print("프로그램 동작 확인:" + str(datetime.now()))
 
 # 스케줄러 설정
 scheduler = BackgroundScheduler()
 scheduler.add_job(scheduled_task, 'interval', seconds=10)
+scheduler.add_job(check_scheduler_status, 'interval', minutes=10)
 scheduler.start()
-
-
-
-
-
-
 
 ####################################
 @app.get("/")

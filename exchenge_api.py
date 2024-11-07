@@ -76,34 +76,63 @@ class ExchangeApi:
         data = data.dropna(subset=['MA20', 'STD', 'Upper', 'Lower'])
         return data
 
-    # 주문 요청 메서드
-    def place_order(self, market, side, price, volume, ord_type="limit"):
-        params = {
-            'market': market,
-            'side': side,
-            'ord_type': ord_type,
-            'price': str(price),
-            'volume': str(volume),
-        }
-        query_string = unquote(urlencode(params, doseq=True)).encode("utf-8")
-
-        m = hashlib.sha512()
-        m.update(query_string)
-        query_hash = m.hexdigest()
-
+    # 활성화된 주문 조회 메서드
+    def get_active_orders(self):
         payload = {
             'access_key': access_key,
             'nonce': str(uuid.uuid4()),
-            'query_hash': query_hash,
-            'query_hash_alg': 'SHA512',
         }
 
         jwt_token = jwt.encode(payload, secret_key)
         authorization = 'Bearer {}'.format(jwt_token)
-        headers = {'Authorization': authorization}
+        headers = {
+            'Authorization': authorization,
+        }
+        params = {
+            'market': market,
+            'state': 'wait',  # 'wait'는 대기 중인 주문을 의미
+        }
 
-        response = requests.post(server_url + '/v1/orders', json=params, headers=headers)
-        return response.json()
+        res = requests.get(server_url + '/v1/orders', params=params, headers=headers)
+        return res.json()  # 대기 중인 주문 리스트 반환
+
+    def remove_duplicate_buy_orders(self):
+        active_orders = self.get_active_orders()
+
+        # 매수 주문만 필터링
+        buy_orders = [order for order in active_orders if order['side'] == 'bid']
+
+        if buy_orders:
+            # 가장 최근 주문을 찾기 (최신 주문 = 가장 큰 created_at)
+            latest_order = max(buy_orders, key=lambda order: order['created_at'])
+
+            # 가장 최근 주문을 제외한 나머지 주문 취소
+            for order in buy_orders:
+                if order['uuid'] != latest_order['uuid']:
+                    print(f"취소 주문 ID: {order['uuid']}, 가격: {order['price']}")
+                    self.cancel_order(order['uuid'])
+
+            print(f"최신 매수 주문 유지: 주문 ID: {latest_order['uuid']}, 가격: {latest_order['price']}")
+
+    # 주문 취소 메서드
+    def cancel_order(self, order_id):
+        payload = {
+            'access_key': access_key,
+            'nonce': str(uuid.uuid4()),
+        }
+
+        jwt_token = jwt.encode(payload, secret_key)
+        authorization = 'Bearer {}'.format(jwt_token)
+        headers = {
+            'Authorization': authorization,
+        }
+        params = {
+            'uuid': order_id,
+        }
+
+        res = requests.delete(server_url + '/v1/order', params=params, headers=headers)
+        return res.json()  # 주문 취소 결과 반환
+
 
     # 볼린저 밴드 전략 메서드
     def bollinger_strategy(self):
@@ -126,6 +155,7 @@ class ExchangeApi:
             print(latest_data['Upper'])
             sell_volume = coin_balance  # 보유한 모든 코인 매도
             self.place_order(market=market, side="ask", price=latest_data['trade_price'], volume=sell_volume)
+            self.remove_duplicate_buy_orders()
 
         # 매수 조건 - 하단 밴드 터치 시
         elif latest_data['trade_price'] <= latest_data['Lower']:
