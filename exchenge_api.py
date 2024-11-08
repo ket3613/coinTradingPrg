@@ -47,8 +47,8 @@ class ExchangeApi:
     def bollinger_strategy(self):
         ## 코인에 볼린저 밴드 계산 상단,한단 가격 가져옴
         doge_data = self.get_data()
-        doge_data = self.calculate_bollinger_bands(doge_data)
-        latest_data = doge_data.iloc[0]
+        result_doge_data = self.calculate_bollinger_bands(doge_data)
+        latest_data = result_doge_data.iloc[0]
         upper_volume = round(latest_data['Upper'], 6)
         lower_volume = round(latest_data['Lower'], 6)
 
