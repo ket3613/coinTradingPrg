@@ -38,8 +38,8 @@ class ExchangeApi:
         data['MA20'] = data['trade_price'].rolling(window=window).mean()
         data['STD'] = data['trade_price'].rolling(window=window).std()
 
-        data['Upper'] = data['MA20'] + (data['STD'] * 1.9)
-        data['Lower'] = data['MA20'] - (data['STD'] * 1.9)
+        data['Upper'] = data['MA20'] + (data['STD'] * 1.8)
+        data['Lower'] = data['MA20'] - (data['STD'] * 1.8)
         data = data.dropna(subset=['MA20', 'STD', 'Upper', 'Lower'])
         return data
 
