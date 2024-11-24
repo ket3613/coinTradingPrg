@@ -1,5 +1,5 @@
-제가 프로젝트의 README를 잘 정리해서 쉽게 복붙할 수 있는 형태로 만들어 드리겠습니다. 아래는 기본적인 README 구성의 예시입니다.
 
+![Untitled](runnig.png)
 ---
 
 # Coin Trading Bot
