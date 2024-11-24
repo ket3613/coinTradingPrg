@@ -1,7 +1,4 @@
 
-![Untitled](runnig.png)
----
-
 # Coin Trading Bot
 
 ## 소개
@@ -26,6 +23,8 @@
 
 3. **환경 설정**:
    `config.py` 파일을 편집하여 API 키, 거래소 정보 등을 설정합니다.
+
+![Untitled](runnig.png)
 
 ## 사용 방법
 - 프로그램을 실행하여 자동으로 코인을 매수/매도하는 작업을 시작할 수 있습니다.
