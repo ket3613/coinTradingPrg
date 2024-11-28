@@ -45,20 +45,20 @@ class ExchangeApi:
 
     # 볼린저 밴드 전략 메서드 (변경된 부분 포함)
     def bollinger_strategy(self):
-        ## 코인에 볼린저 밴드 계산 상단,한단 가격 가져옴
+        ## 코인에 볼린저 밴드 계산 상단, 하단 가격 가져옴
         doge_data = self.get_data()
         result_doge_data = self.calculate_bollinger_bands(doge_data)
         latest_data = result_doge_data.iloc[0]
         upper_volume = round(latest_data['Upper'], 6)
         lower_volume = round(latest_data['Lower'], 6)
 
-        ## 코인에 현재가격 가져온다
+        ## 코인에 현재 가격 가져오기
         trade_price = pyupbit.get_current_price(market)
 
         if lower_volume >= trade_price:
             print("===하단 터치===")
-            print("lower_volume = " + str(lower_volume)+"  |   trade_price = " + str(trade_price))
-            ## 내잔고 가져온다
+            print("lower_volume = " + str(lower_volume) + "  |   trade_price = " + str(trade_price))
+            ## 내 잔고 가져오기
             upbit = pyupbit.Upbit(access_key, secret_key)
             balance = float(int(float(upbit.get_balance("KRW"))))
             if balance > 5100.0:
@@ -73,10 +73,15 @@ class ExchangeApi:
             print("===상단 터치===")
             print("upper_volume = " + str(upper_volume) + "  |   trade_price = " + str(trade_price))
             upbit = pyupbit.Upbit(access_key, secret_key)
+            
+            # 보유 코인 수량 및 매수 평균 단가 가져오기
             coin_balance = upbit.get_balance("SHIB")
+            avg_buy_price = upbit.get_avg_buy_price("SHIB")  # 매수 평균 단가 가져오기
+            
             if coin_balance >= 1.0:
-                ret = upbit.sell_limit_order("KRW-SHIB", round(upper_volume, 4), round(coin_balance, 8))
-                print("매도 주문 결과: ", ret)
-
-
-
+                # 수익 여부 확인
+                if trade_price > avg_buy_price:  # 현재 가격이 매수 평균 단가보다 높아야 매도
+                    ret = upbit.sell_limit_order("KRW-SHIB", round(upper_volume, 4), round(coin_balance, 8))
+                    print("매도 주문 결과: ", ret)
+                else:
+                    print("현재 가격이 매수 평균 단가보다 낮아 매도하지 않습니다.")
