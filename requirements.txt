@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+apscheduler
+pandas
+pyupbit
+requests
+pyyaml

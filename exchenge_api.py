@@ -13,10 +13,10 @@ pd.set_option('display.max_columns', None)
 
 # 환경변수에서 API 키와 URL 가져오기
 config = load_config('config.yml')
-access_key = config['api']['access_key']
-secret_key = config['api']['secret_key']
-server_url = config['api']['server_url']
-market = 'KRW-SHIB'
+access_key = config['services']['coin-trading-bot']['environment']['ACCESS_KEY']
+secret_key = config['services']['coin-trading-bot']['environment']['SECRET_KEY']
+server_url = config['services']['coin-trading-bot']['environment']['SERVER_URL']
+market = 'KRW-DOGE'
 
 class ExchangeApi:
 
@@ -38,28 +38,28 @@ class ExchangeApi:
         data['MA20'] = data['trade_price'].rolling(window=window).mean()
         data['STD'] = data['trade_price'].rolling(window=window).std()
 
-        data['Upper'] = data['MA20'] + (data['STD'] * 1.8)
-        data['Lower'] = data['MA20'] - (data['STD'] * 1.8)
+        data['Upper'] = data['MA20'] + (data['STD'] * 2.2)
+        data['Lower'] = data['MA20'] - (data['STD'] * 2.0)
         data = data.dropna(subset=['MA20', 'STD', 'Upper', 'Lower'])
         return data
 
     # 볼린저 밴드 전략 메서드 (변경된 부분 포함)
     def bollinger_strategy(self):
-        ## 코인에 볼린저 밴드 계산 상단,한단 가격 가져옴
         doge_data = self.get_data()
         result_doge_data = self.calculate_bollinger_bands(doge_data)
         latest_data = result_doge_data.iloc[0]
         upper_volume = round(latest_data['Upper'], 6)
         lower_volume = round(latest_data['Lower'], 6)
 
-        ## 코인에 현재가격 가져온다
+        # 코인 현재 가격 가져오기
         trade_price = pyupbit.get_current_price(market)
+
+        # PyUpbit 객체 생성
+        upbit = pyupbit.Upbit(access_key, secret_key)
 
         if lower_volume >= trade_price:
             print("===하단 터치===")
-            print("lower_volume = " + str(lower_volume)+"  |   trade_price = " + str(trade_price))
-            ## 내잔고 가져온다
-            upbit = pyupbit.Upbit(access_key, secret_key)
+            print("lower_volume = " + str(lower_volume) + "  |   trade_price = " + str(trade_price))
             balance = float(int(float(upbit.get_balance("KRW"))))
             if balance > 5100.0:
                 print("잔고 5100 이상 ")
@@ -72,11 +72,13 @@ class ExchangeApi:
         elif upper_volume <= trade_price:
             print("===상단 터치===")
             print("upper_volume = " + str(upper_volume) + "  |   trade_price = " + str(trade_price))
-            upbit = pyupbit.Upbit(access_key, secret_key)
-            coin_balance = upbit.get_balance("SHIB")
+            coin_balance = upbit.get_balance(market)
             if coin_balance >= 1.0:
-                ret = upbit.sell_limit_order("KRW-SHIB", round(upper_volume, 4), round(coin_balance, 8))
-                print("매도 주문 결과: ", ret)
-
-
-
+                # 매수 평균가 가져오기
+                avg_buy_price = float(upbit.get_avg_buy_price(market))
+                # 현재 가격이 매수 평균가보다 높을 때만 매도
+                if trade_price > avg_buy_price:
+                    ret = upbit.sell_limit_order(market, round(upper_volume, 4), round(coin_balance, 8))
+                    print("매도 주문 결과: ", ret)
+                else:
+                    print("손해 방지: 매도하지 않습니다.")
