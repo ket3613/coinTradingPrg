@@ -1,184 +1,129 @@
-import json
+import pyupbit
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.preprocessing import MinMaxScaler
+import pandas_ta as ta
+import requests
 import os
 import pickle
+from transformers import pipeline
+import asyncio
 
-import numpy as np
-import pandas as pd
-import pyupbit
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.layers import LSTM, Dense
-from tensorflow.keras.models import Sequential, load_model
-
-# PyUpbit API 설정
-market = "KRW-DOGE"
 
 class ExchangeApi:
-    def __init__(self):
-        self.model_file = "lstm_model.h5"
-        self.scaler_file = "scaler.pkl"
-        self.candle_file = "pretrained_candle_data.csv"
-        self.trading_file = "trading_data.json"
+    def __init__(self, market="KRW-DOGE"):
+        """1단계: 초기화 및 모델 로드"""
+        self.market = market
+        self.model_file = "models/lstm_model.h5"
+        self.scaler_file = "models/scaler.pkl"
+        self.candle_file = "data/candle_data.csv"
+        self.lstm_model = None
+        self.rf_model = None
+        self.xgb_model = None
+        self.scaler = MinMaxScaler()
+        self.sentiment_pipeline = pipeline("sentiment-analysis")
+        self.load_models()
 
-        # 모델, 스케일러, 데이터 복원
-        self.lstm_model = self.load_lstm_model()
-        self.scaler = self.load_scaler()
-        self.candle_data = self.load_candle_data()
-        self.trading_data = self.load_trading_data()
+    # 데이터 관련 메서드
+    def fetch_latest_data(self):
+        """2단계: 최근 캔들 데이터 가져오기"""
+        return pyupbit.get_ohlcv(self.market, interval="minute30", count=1)
 
-        # 학습된 모델이 없을 경우 새로 학습
-        if self.lstm_model is None or self.scaler is None:
-            self.train_lstm_model()
+    def save_data_parquet(self, data):
+        """3단계: 수집한 데이터를 Parquet 형식으로 저장"""
+        file_path = self.candle_file.replace(".csv", ".parquet")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        data.to_parquet(file_path, engine="pyarrow")
+        print(f"데이터 저장 완료: {file_path}")
 
-    def fetch_longterm_data(self, market="KRW-DOGE", interval="minute30", days=90):
-        """긴 기간의 캔들 데이터를 수집."""
-        all_data = []
-        for i in range(days):
-            to_date = pd.Timestamp.now() - pd.Timedelta(days=i)
-            data = pyupbit.get_ohlcv(market, interval=interval, to=to_date)
-            if data is not None:
-                all_data.append(data)
+    # 기술 지표 계산
+    def calculate_indicators(self, data):
+        """4단계: 기술 지표 계산 (RSI, MACD, VWAP)"""
+        data["RSI"] = ta.rsi(data["close"])
+        macd = ta.macd(data["close"])
+        data["MACD"] = macd["MACD_12_26_9"]
+        data["Signal_Line"] = macd["MACDs_12_26_9"]
+        data["VWAP"] = ta.vwap(data["high"], data["low"], data["close"], data["volume"])
+        return data
 
-        # 데이터 합치기 및 정렬
-        result = pd.concat(all_data).sort_index()
-        return result
-
-    def save_candle_data(self, data):
-        """수집한 캔들 데이터를 파일로 저장."""
-        data.to_csv(self.candle_file, index=True)
-        print(f"캔들 데이터 저장 완료: {self.candle_file}")
-
-    def load_candle_data(self):
-        """저장된 캔들 데이터를 불러옴."""
-        try:
-            data = pd.read_csv(self.candle_file, index_col=0)
-            print(f"캔들 데이터 복원 완료: {self.candle_file}")
-            return data
-        except FileNotFoundError:
-            print(f"{self.candle_file} 파일이 없습니다. 데이터를 새로 수집해야 합니다.")
-            return None
-
-    def update_candle_data(self, market="KRW-DOGE"):
-        """기존 데이터에 새로운 캔들 데이터를 추가."""
-        existing_data = self.load_candle_data()
-        latest_data = self.fetch_longterm_data(market=market, interval="minute30", days=1)
-
-        if existing_data is not None and latest_data is not None:
-            updated_data = pd.concat([existing_data, latest_data]).drop_duplicates().sort_index()
-            self.save_candle_data(updated_data)
-            print("캔들 데이터 업데이트 완료.")
-        else:
-            print("데이터 업데이트 실패.")
-
-    def prepare_training_data(self, data, window_size=30):
-        """LSTM 학습 데이터를 준비."""
-        scaled_data = self.scaler.fit_transform(data[['open', 'high', 'low', 'close', 'volume']])
-
-        X, y = [], []
-        for i in range(len(scaled_data) - window_size):
-            X.append(scaled_data[i:i + window_size])
-            future_price = scaled_data[i + window_size, 3]  # 종가
-            current_price = scaled_data[i + window_size - 1, 3]
-            if future_price >= current_price * 1.05:
-                y.append(1)  # 익절 신호
-            elif future_price <= current_price * 0.8:
-                y.append(-1)  # 손절 신호
-            else:
-                y.append(0)  # 보유 신호
-
-        return np.array(X), np.array(y)
-
-    def train_lstm_model(self):
-        """LSTM 모델 학습 및 저장."""
-        data = self.load_candle_data()
-        if data is None:
-            print("캔들 데이터를 먼저 수집해야 합니다.")
-            return
-
-        X, y = self.prepare_training_data(data)
-
-        model = Sequential([
-            LSTM(50, return_sequences=True, input_shape=(X.shape[1], X.shape[2])),
-            LSTM(50),
-            Dense(1, activation='tanh')
-        ])
-        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-        model.fit(X, y, epochs=10, batch_size=32, validation_split=0.2)
-
-        self.lstm_model = model
-        self.save_lstm_model()
-        self.save_scaler()
-        print("LSTM 모델 학습 및 저장 완료.")
-
-    def predict_signal(self, live_data):
-        """실시간 데이터를 통한 매매 신호 예측."""
-        live_data_scaled = self.scaler.transform(live_data[['open', 'high', 'low', 'close', 'volume']])
-        input_data = np.expand_dims(live_data_scaled[-30:], axis=0)
-        prediction = self.lstm_model.predict(input_data)
-        return int(np.round(prediction[0][0]))
-
-    def lstm_trading_logic(self):
-        """LSTM 기반 매매 로직."""
-        upbit = pyupbit.Upbit("ACCESS_KEY", "SECRET_KEY")
-
-        # 실시간 데이터 가져오기
-        live_data = self.fetch_longterm_data(market=market, interval="minute30", days=1)
-        signal = self.predict_signal(live_data)
-
-        # 매매 로직
-        trade_price = pyupbit.get_current_price(market)
-        krw_balance = upbit.get_balance("KRW")
-        coin_balance = upbit.get_balance(market)
-
-        if signal == 1:  # 익절 신호
-            if coin_balance > 0:
-                upbit.sell_market_order(market, coin_balance)
-                print("익절 매도")
-        elif signal == -1:  # 손절 신호
-            if coin_balance > 0:
-                upbit.sell_market_order(market, coin_balance)
-                print("손절 매도")
-        elif signal == 0:  # 보유 신호
-            if krw_balance >= 200000:  # 여유 금액이 20만 원 이상인 경우 매수
-                volume = 200000 / trade_price
-                upbit.buy_market_order(market, 200000)
-                print("매수 완료")
-
-    # 저장 및 복원
-    def save_lstm_model(self):
-        self.lstm_model.save(self.model_file)
-        print(f"LSTM 모델 저장 완료: {self.model_file}")
-
-    def load_lstm_model(self):
+    # 모델 관련 메서드
+    def load_models(self):
+        """5단계: 저장된 모델 로드 (LSTM, Scaler)"""
         if os.path.exists(self.model_file):
-            print(f"LSTM 모델 복원 완료: {self.model_file}")
-            return load_model(self.model_file)
-        print("LSTM 모델 파일이 없습니다.")
-        return None
+            self.lstm_model = load_model(self.model_file)
+            print("LSTM 모델 로드 완료")
+        else:
+            print("LSTM 모델이 없습니다.")
 
-    def save_scaler(self):
-        with open(self.scaler_file, "wb") as f:
-            pickle.dump(self.scaler, f)
-        print(f"스케일러 저장 완료: {self.scaler_file}")
-
-    def load_scaler(self):
         if os.path.exists(self.scaler_file):
             with open(self.scaler_file, "rb") as f:
-                scaler = pickle.load(f)
-            print(f"스케일러 복원 완료: {self.scaler_file}")
-            return scaler
-        print("스케일러 파일이 없습니다.")
-        return MinMaxScaler()
+                self.scaler = pickle.load(f)
+            print("스케일러 로드 완료")
 
-    def save_trading_data(self):
-        with open(self.trading_file, "w") as f:
-            json.dump(self.trading_data, f)
-        print(f"트레이딩 데이터 저장 완료: {self.trading_file}")
+    def predict_signal(self, live_data):
+        """6단계: 앙상블 예측 신호 생성"""
+        live_data_scaled = self.scaler.transform(live_data)
+        input_data = np.expand_dims(live_data_scaled[-30:], axis=0)
 
-    def load_trading_data(self):
-        if os.path.exists(self.trading_file):
-            with open(self.trading_file, "r") as f:
-                data = json.load(f)
-            print(f"트레이딩 데이터 복원 완료: {self.trading_file}")
-            return data
-        print("트레이딩 데이터 파일이 없습니다.")
-        return {"balance": 100000, "avg_buy_price": 0, "trades": []}
+        # LSTM 예측
+        lstm_pred = int(np.round(self.lstm_model.predict(input_data)[0][0]))
+
+        # Random Forest 예측
+        rf_pred = self.rf_model.predict(live_data_scaled)
+
+        # XGBoost 예측
+        xgb_pred = self.xgb_model.predict(live_data_scaled)
+
+        # 최종 신호 (가중 평균)
+        final_signal = (lstm_pred * 0.5) + (rf_pred * 0.3) + (xgb_pred * 0.2)
+        return int(np.sign(final_signal))
+
+    # 뉴스 감성 분석
+    def fetch_sentiment(self, text):
+        """7단계: Transformer 기반 뉴스 감성 분석"""
+        result = self.sentiment_pipeline(text)
+        return result[0]["label"], result[0]["score"]
+
+    # 매매 로직
+    def execute_trade(self, signal, upbit):
+        """8단계: PyUpbit API를 통한 매수/매도 실행"""
+        current_price = pyupbit.get_current_price(self.market)
+        if signal == 1:
+            krw_balance = upbit.get_balance("KRW")
+            if krw_balance > 200000:
+                upbit.buy_market_order(self.market, 200000)
+                print(f"매수 완료: {self.market}")
+        elif signal == -1:
+            coin_balance = upbit.get_balance(self.market)
+            if coin_balance > 0:
+                upbit.sell_market_order(self.market, coin_balance)
+                print(f"매도 완료: {self.market}")
+        else:
+            print("보유 유지")
+
+    # 동적 스케줄 관리
+    def dynamic_schedule_interval(self, volatility):
+        """9단계: 변동성에 따라 스케줄 간격 조정"""
+        if volatility > 0.05:
+            return 5  # 높은 변동성일 때
+        else:
+            return 30  # 낮은 변동성일 때
+
+    # 조건 기반 실행
+    def should_trade(self, latest_data):
+        """10단계: 매매 실행 조건 확인"""
+        recent_change = abs(latest_data['close'][-1] - latest_data['close'][-2])
+        return recent_change / latest_data['close'][-2] > 0.01  # 1% 이상 변동 시 실행
+
+    async def fetch_data_and_predict(self, upbit):
+        """11단계: 데이터 수집과 예측을 병렬로 실행"""
+        latest_data = self.fetch_latest_data()
+        sentiment = await asyncio.to_thread(self.fetch_sentiment, "DOGE 뉴스")
+        prediction = self.predict_signal(latest_data)
+        if self.should_trade(latest_data):
+            self.execute_trade(prediction, upbit)
+        return sentiment, prediction
