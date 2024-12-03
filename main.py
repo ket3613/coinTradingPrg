@@ -1,32 +1,23 @@
 import uvicorn
 from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
-import time
-import pandas as pd
-from datetime import datetime
 from exchenge_api import ExchangeApi
 
 app = FastAPI()
+exchange_api = ExchangeApi()
 
-# 작업을 수행할 함수
-def scheduled_task():
-    # 볼린저 밴드 전략 실행
-    exchange_api = ExchangeApi()
-    exchange_api.bollinger_strategy()  # 매수/매도 신호 체크 및 실행
-
-def check_scheduler_status():
-    print("프로그램 동작 확인:" + str(datetime.now()))
+# LSTM 및 RandomForest 매매 함수
+def run_trading_logic():
+    exchange_api.lstm_trading_logic()
 
 # 스케줄러 설정
 scheduler = BackgroundScheduler()
-scheduler.add_job(scheduled_task, 'interval', seconds=2)
-scheduler.add_job(check_scheduler_status, 'interval', minutes=10)
+scheduler.add_job(run_trading_logic, 'interval', seconds=5)  # 5초마다 실행
 scheduler.start()
 
-####################################
 @app.get("/")
 def read_root():
-    return {"message": "Hello, FastAPI!"}
+    return {"message": "AI-based Coin Trading Bot is running on KRW-DOGE!"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

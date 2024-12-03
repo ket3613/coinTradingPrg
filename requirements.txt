@@ -1,7 +1,8 @@
 fastapi
 uvicorn
-apscheduler
-pandas
 pyupbit
-requests
-pyyaml
+tensorflow
+pandas
+scikit-learn
+textblob
+apscheduler

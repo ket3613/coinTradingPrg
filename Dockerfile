@@ -1,15 +1,19 @@
-# Python 3.9 Slim 이미지 사용 (최소한의 이미지)
+# Step 1: 베이스 이미지 설정 (Python 3.9 사용)
 FROM python:3.9-slim
 
-# 작업 디렉토리 설정
+# Step 2: 작업 디렉토리 생성
 WORKDIR /app
 
-# 의존성 파일 복사 및 설치
-COPY requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 애플리케이션 파일 복사
+# Step 3: 필요한 파일 복사
+# requirements.txt와 프로젝트 파일 복사
+COPY requirements.txt .
 COPY . .
 
-# 실행 명령 설정
-CMD ["python", "main.py"]
+# Step 4: 의존성 설치
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Step 5: FastAPI 앱 실행을 위한 포트 설정
+EXPOSE 8000
+
+# Step 6: 실행 명령어 설정 (uvicorn으로 FastAPI 실행)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
