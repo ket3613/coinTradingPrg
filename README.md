@@ -42,8 +42,8 @@ ps aux | grep uvicorn
 #프로세스 종료:
 kill <프로세스_ID>
 ```
-![Untitled](ras1.png)
-![Untitled](ras2.png)
+![Untitled](rap1.png)
+![Untitled](rap2.png)
 
 ## 주의사항
 - 이 프로젝트는 암호화폐 시장의 변동성에 의존하므로, 투자에는 항상 위험이 따릅니다.
