@@ -42,9 +42,7 @@ ps aux | grep uvicorn
 #프로세스 종료:
 kill <프로세스_ID>
 ```
-![Untitled](rap1.jpg)
-![Untitled](rap2.png)
-<img src="rap1.jpg" alt="Untitled" width="400"/>
+<img src="rap1.jpg" alt="Untitled" width="400" />
 <img src="rap2.png" alt="Untitled" width="400"/>
 
 ## 주의사항
