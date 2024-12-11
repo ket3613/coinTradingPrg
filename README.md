@@ -30,16 +30,20 @@
 - 프로그램을 실행하여 자동으로 코인을 매수/매도하는 작업을 시작할 수 있습니다.
   ```bash
   python main.py
+  ```
 
-실행 명령:
+```bash
+#실행 명령:
 nohup uvicorn main:app --host 0.0.0.0 --port 8000 > app.log 2>&1 &
 
-실행 확인:
+#실행 확인
 ps aux | grep uvicorn
 
-프로세스 종료:
+#프로세스 종료:
 kill <프로세스_ID>
-  ```
+```
+![Untitled](ras1.png)
+![Untitled](ras2.png)
 
 ## 주의사항
 - 이 프로젝트는 암호화폐 시장의 변동성에 의존하므로, 투자에는 항상 위험이 따릅니다.
