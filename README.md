@@ -42,8 +42,7 @@ ps aux | grep uvicorn
 #프로세스 종료:
 kill <프로세스_ID>
 ```
-<img src="rap1.jpg" alt="Untitled" width="400" />
-<img src="rap2.png" alt="Untitled" width="400"/>
+<img src="rap1.jpg" alt="Untitled" width="400" height="300"/><img src="rap2.png" alt="Untitled" width="400" height="300"/>
 
 ## 주의사항
 - 이 프로젝트는 암호화폐 시장의 변동성에 의존하므로, 투자에는 항상 위험이 따릅니다.
