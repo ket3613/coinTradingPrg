@@ -32,6 +32,14 @@
   python main.py
   ```
 
+### 강화 학습 예제
+`rl_trading_bot.py`는 수익률을 보상으로 사용하는 간단한 강화 학습 환경 예제를 제공
+합니다. 실행하면 무작위 행동을 통해 누적 보상을 계산하며, 강화 학습 모델을 연결해
+자동 매매 전략을 실험할 수 있습니다.
+```bash
+python rl_trading_bot.py
+```
+
 ```bash
 #실행 명령:
 nohup uvicorn main:app --host 0.0.0.0 --port 8000 > app.log 2>&1 &
