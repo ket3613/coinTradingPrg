@@ -12,6 +12,7 @@ import os
 import pickle
 from transformers import pipeline
 import asyncio
+from config import load_config
 
 
 class ExchangeApi:
@@ -26,6 +27,14 @@ class ExchangeApi:
         self.xgb_model = None
         self.scaler = MinMaxScaler()
         self.sentiment_pipeline = pipeline("sentiment-analysis")
+
+        # API 설정 로드 및 Upbit 객체 초기화
+        cfg = load_config()
+        api_cfg = cfg.get("api", {}) if cfg else {}
+        access_key = api_cfg.get("access_key")
+        secret_key = api_cfg.get("secret_key")
+        self.upbit = pyupbit.Upbit(access_key, secret_key) if access_key and secret_key else None
+
         self.load_models()
 
     # 데이터 관련 메서드
@@ -126,4 +135,11 @@ class ExchangeApi:
         prediction = self.predict_signal(latest_data)
         if self.should_trade(latest_data):
             self.execute_trade(prediction, upbit)
+        return sentiment, prediction
+
+    def lstm_trading_logic(self):
+        """Scheduler에서 호출되는 메인 거래 로직"""
+        if self.upbit is None:
+            raise RuntimeError("Upbit API 키가 설정되지 않았습니다.")
+        sentiment, prediction = asyncio.run(self.fetch_data_and_predict(self.upbit))
         return sentiment, prediction
